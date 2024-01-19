@@ -1,0 +1,1 @@
+from django_form_copy.copy_paste.mixins import CopyPasteMixin

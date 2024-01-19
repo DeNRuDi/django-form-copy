@@ -1,0 +1,36 @@
+{% extends "admin/change_form.html" %}
+
+{% block submit_buttons_bottom %}
+
+    {{ block.super }}
+    <textarea id="copyTextarea" style="display: none;">{{ info }}</textarea>
+    <div class="submit-row">
+        {% if not add %}
+            <input type="button" value="Copy" onclick="copyValues()">
+        {% else %}
+            <input type="button" value="Paste" onclick="pasteValues()">
+        {% endif %}
+    </div>
+
+
+<script>
+    function pasteValues() {
+        var currentUrl = new URL(window.location.href);
+        currentUrl.searchParams.set('paste', 'true');
+        window.location.href = currentUrl.toString();
+    }
+
+    function copyValues() {
+        let currentUrl = new URL(window.location.href);
+        currentUrl.searchParams.set('copy', 'true');
+        window.location.href = currentUrl.toString();
+    }
+
+    document.addEventListener('DOMContentLoaded', (event) => {
+        let copyText = document.getElementById("copyTextarea");
+        if (copyText.value)
+            navigator.clipboard.writeText(copyText.value);
+    });
+
+</script>
+{% endblock %}
