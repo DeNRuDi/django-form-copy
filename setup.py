@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 
 
-version = '0.1.1'
+version = '0.1.2'
 with open('README.md', 'r', encoding='utf-8') as f:
     long_description = f.read()
 
@@ -18,7 +18,8 @@ setup(
     long_description_content_type='text/markdown',
     install_requires=[
         'django',
-        'clipboard'
+        'clipboard==0.0.4',
+        'python-dateutil==2.8.2',
     ],
     classifiers=[
         'Development Status :: 4 - Beta',
