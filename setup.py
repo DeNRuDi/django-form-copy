@@ -1,13 +1,14 @@
 from setuptools import setup, find_packages
 
 
-version = '0.1'
+version = '0.1.1'
 with open('README.md', 'r', encoding='utf-8') as f:
     long_description = f.read()
 
 setup(
     name='django-form-copy',
     version=version,
+    include_package_data=True,
     packages=find_packages(),
     url='https://github.com/DeNRuDi/django-form-copy',
     author='DeNRuDi',
@@ -23,7 +24,7 @@ setup(
         'Development Status :: 4 - Beta',
         'Intended Audience :: Developers',
         'Operating System :: OS Independent',
-        'License :: OSI Approved :: BSD 3-Clause License',
+        'License :: OSI Approved :: BSD License',
         'Programming Language :: Python :: 3',
         'Programming Language :: Python :: 3.7',
         'Programming Language :: Python :: 3.8',
