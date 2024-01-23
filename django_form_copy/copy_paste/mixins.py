@@ -131,10 +131,16 @@ class CopyPasteMixin(UtilsMixin):
         return initial_data
 
     def change_view(self, request, object_id, form_url='', extra_context=None):
-        if 'copy' in request.GET:
+        copy = request.GET.get('copy')
+        generate = request.GET.get('generate')
+
+        if copy or generate:
             obj = self.model.objects.get(pk=object_id)
             info = self._expand_model_relations(obj)
-            messages.success(request, 'Data copied successfully.')
+            if copy:
+                messages.success(request, 'Data copied successfully.')
+            elif generate:
+                messages.success(request, 'Data generated successfully.')
             extra_context = extra_context or {}
             extra_context['info'] = info
         return super().change_view(request, object_id, form_url, extra_context)
