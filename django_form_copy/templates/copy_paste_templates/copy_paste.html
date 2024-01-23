@@ -5,7 +5,7 @@
     {{ block.super }}
     <div class="submit-row">
         {% if not add %}
-            {% if request.is_secure or "127.0.0.1" in request.get_host or "localhost" in request.get_host %}
+            {% if is_https or "127.0.0.1" in request.get_host or "localhost" in request.get_host %}
                 <input type="button" value="Copy" onclick='generateValues("copy")'>
             {% else %}
                 {% if info %}

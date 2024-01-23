@@ -133,7 +133,7 @@ class CopyPasteMixin(UtilsMixin):
     def change_view(self, request, object_id, form_url='', extra_context=None):
         copy = request.GET.get('copy')
         generate = request.GET.get('generate')
-
+        extra_context = extra_context or {}
         if copy or generate:
             obj = self.model.objects.get(pk=object_id)
             info = self._expand_model_relations(obj)
@@ -141,8 +141,9 @@ class CopyPasteMixin(UtilsMixin):
                 messages.success(request, 'Data copied successfully.')
             elif generate:
                 messages.success(request, 'Data generated successfully.')
-            extra_context = extra_context or {}
             extra_context['info'] = info
+
+        extra_context['is_https'] = 'https://' in request.build_absolute_uri()
         return super().change_view(request, object_id, form_url, extra_context)
 
     def response_post_save_add(self, request, obj):
