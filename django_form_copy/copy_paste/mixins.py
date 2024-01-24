@@ -23,9 +23,9 @@ class UtilsMixin:
             if isinstance(values, dict):
                 self._foreign_field_update_info_process(models_dict, values, model_info, field)
             elif isinstance(values, list):
-                self._many_2_many_update_info_process(models_dict, values, model_info, field)
+                self._many_2_many_field_update_info_process(models_dict, values, model_info, field)
             elif isinstance(values, str):
-                self._default_fields_update_info_process(values, model_info, field)
+                self._default_field_update_info_process(values, model_info, field)
             elif isinstance(values, tuple):
                 self._image_field_update_info_process(values, model_info, field)
         return model_info
@@ -39,7 +39,7 @@ class UtilsMixin:
             obj, _ = model.objects.get_or_create(**nested_values)
             model_info.update({field: obj.id})
 
-    def _many_2_many_update_info_process(self, models_dict: dict, values: list, model_info: dict, field: str) -> None:
+    def _many_2_many_field_update_info_process(self, models_dict: dict, values: list, model_info: dict, field: str) -> None:
         m2m_ids = []
         for m2m_item in values:
             model = models_dict.get(m2m_item['model'])
@@ -51,7 +51,7 @@ class UtilsMixin:
                 m2m_ids.append(obj.id)
         model_info.update({field: m2m_ids})
 
-    def _default_fields_update_info_process(self, values: str, model_info: dict, field: str) -> None:
+    def _default_field_update_info_process(self, values: str, model_info: dict, field: str) -> None:
         result = self._is_datetime(values)
         model_info.update({field: result}) if result else None
 
