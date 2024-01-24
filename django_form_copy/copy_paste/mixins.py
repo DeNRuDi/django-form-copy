@@ -1,9 +1,7 @@
 from django.db.models.fields.files import ImageFieldFile, ImageField
 from django.db.models import ForeignKey, ManyToManyField
-
 from django.core.files.storage import FileSystemStorage
 from django.core.files.base import ContentFile
-
 from django.forms import model_to_dict
 from django.contrib import messages
 from django.conf import settings
@@ -18,50 +16,78 @@ import ast
 
 class UtilsMixin:
 
-    @staticmethod
-    def _is_datetime(datetime_string: str) -> datetime | bool:
-        try:
-            return parse(datetime_string)
-        except (ParserError, OverflowError):
-            return False
-
     def _creating_actual_info_from_cb_process(self, model_info: dict) -> dict:
         models = apps.get_models()
         models_dict = {model.__name__: model for model in models}
         for field, values in model_info.items():
             if isinstance(values, dict):
-                # foreign key
-                model = models_dict.get(values['model'])
-                if model:
-                    values = self._pre_format_model_dict(values, to_datetime=True)
-                    values.pop('model', None)
-                    values.pop('id', None)
-                    obj, _ = model.objects.get_or_create(**values)
-                    model_info.update({field: obj.id})
+                self._foreign_field_update_info_process(models_dict, values, model_info, field)
             elif isinstance(values, list):
-                # manytomany field
-                m2m_ids = []
-                for m2m_item in values:
-                    model = models_dict.get(m2m_item['model'])
-                    if model:
-                        m2m_item = self._pre_format_model_dict(m2m_item, to_datetime=True)
-                        m2m_item.pop('id', None)
-                        m2m_item.pop('model', None)
-                        obj, created = model.objects.get_or_create(**m2m_item)
-                        m2m_ids.append(obj.id)
-                model_info.update({field: m2m_ids})
+                self._many_2_many_update_info_process(models_dict, values, model_info, field)
             elif isinstance(values, str):
-                result = self._is_datetime(values)
-                model_info.update({field: result}) if result else None
+                self._default_fields_update_info_process(values, model_info, field)
             elif isinstance(values, tuple):
-                name, image_bytes, model_name = values
-                image = ImageField(storage=FileSystemStorage(location=settings.BASE_DIR))
-                image.attname = model_name
-
-                content_file = ContentFile(image_bytes, name=name)
-                image_file_field = ImageFieldFile(instance=content_file, field=image, name=name)
-                model_info.update({field: image_file_field}) if image_file_field else None
+                self._image_field_update_info_process(values, model_info, field)
         return model_info
+
+    def _foreign_field_update_info_process(self, models_dict: dict, values: dict, model_info: dict, field: str) -> None:
+        model = models_dict.get(values['model'])
+        if model:
+            values = self._pre_format_model_dict(values, to_datetime=True)
+            nested_values = self._get_or_create_nested_model(models_dict, values)
+            nested_values = self._del_values_from_dict(nested_values, ['id', 'model'])
+            obj, _ = model.objects.get_or_create(**nested_values)
+            model_info.update({field: obj.id})
+
+    def _many_2_many_update_info_process(self, models_dict: dict, values: list, model_info: dict, field: str) -> None:
+        m2m_ids = []
+        for m2m_item in values:
+            model = models_dict.get(m2m_item['model'])
+            if model:
+                m2m_item = self._pre_format_model_dict(m2m_item, to_datetime=True)
+                nested_m2m_item = self._get_or_create_nested_model(models_dict, m2m_item)
+                nested_m2m_item = self._del_values_from_dict(nested_m2m_item, ['id', 'model'])
+                obj, _ = model.objects.get_or_create(**nested_m2m_item)
+                m2m_ids.append(obj.id)
+        model_info.update({field: m2m_ids})
+
+    def _default_fields_update_info_process(self, values: str, model_info: dict, field: str) -> None:
+        result = self._is_datetime(values)
+        model_info.update({field: result}) if result else None
+
+    @staticmethod
+    def _image_field_update_info_process(values: tuple, model_info: dict, field: str) -> None:
+        name, image_bytes, model_name = values
+        image = ImageField(storage=FileSystemStorage(location=settings.BASE_DIR))
+        image.attname = model_name
+
+        content_file = ContentFile(image_bytes, name=name)
+        image_file_field = ImageFieldFile(instance=content_file, field=image, name=name)
+        model_info.update({field: image_file_field}) if image_file_field else None
+
+    def _get_or_create_nested_model(self, models_dict: dict, m2m_item: dict) -> dict:
+        nested_m2m_item = m2m_item.copy()
+        for key, value in m2m_item.items():
+            if isinstance(value, dict):
+                model = models_dict.get(value['model'])
+                if model:
+                    values = self._pre_format_model_dict(value, to_datetime=True)
+                    values = self._del_values_from_dict(values, ['id', 'model'])
+                    obj, _ = model.objects.get_or_create(**values)
+                    nested_m2m_item.update({key: obj})
+
+        return nested_m2m_item
+
+    def _del_values_from_dict(self, obj: dict, values_to_del: list) -> dict:
+        new_obj = obj.copy()
+        for key in list(new_obj.keys()):
+            if isinstance(new_obj.get(key), dict):
+                new_obj[key] = self._del_values_from_dict(new_obj[key], values_to_del)
+            else:
+                for value in values_to_del:
+                    if value in new_obj:
+                        new_obj.pop(value)
+        return new_obj
 
     def _pre_format_model_dict(self, obj_dict: dict, to_datetime: bool = False) -> dict:
         field_info = {}
@@ -104,13 +130,20 @@ class UtilsMixin:
                 m2m_field = getattr(obj, field.name).all()
                 data = []
                 for related_obj in m2m_field:
-                    d = model_to_dict(related_obj, exclude='id')
+                    d = self._expand_model_relations(related_obj)
                     d = self._pre_format_model_dict(d)
                     d.update({'model': related_obj.__class__.__name__})
                     data.append(d)
                 obj_dict[field.name] = data
 
         return obj_dict
+
+    @staticmethod
+    def _is_datetime(datetime_string: str) -> datetime | bool:
+        try:
+            return parse(datetime_string)
+        except (ParserError, OverflowError):
+            return False
 
 
 class CopyPasteMixin(UtilsMixin):
@@ -120,24 +153,13 @@ class CopyPasteMixin(UtilsMixin):
         initial_data = super().get_changeform_initial_data(request)
         if 'paste' in request.GET:
             try:
-                info_from_clipboard = clipboard.paste()
-                copy_paste_from_clipboard = ast.literal_eval(info_from_clipboard)
+                copy_paste_from_clipboard = ast.literal_eval(clipboard.paste())
                 new_copy_paste_from_clipboard = self._creating_actual_info_from_cb_process(copy_paste_from_clipboard)
                 initial_data.update(**new_copy_paste_from_clipboard)
-                request.session['initial_data'] = info_from_clipboard
+                request.session['initial_data'] = clipboard.paste()
                 messages.success(request, 'Data pasted successfully.')
             except Exception as err:
-                copy_paste_info = request.session.get('copy_paste_info')
-                if copy_paste_info:
-                    copy_paste_info_from_session = ast.literal_eval(copy_paste_info)
-                    new_copy_paste_from_session = self._creating_actual_info_from_cb_process(copy_paste_info_from_session)
-                    initial_data.update(**new_copy_paste_from_session)
-
-                    request.session['initial_data'] = copy_paste_info
-                    messages.success(request, 'Data pasted successfully.')
-                    request.session.pop('copy_paste_info', None)
-                else:
-                    messages.error(request, f'Failed to paste - data in the clipboard is not valid. | {err}')
+                messages.error(request, f'Failed to paste - data in the clipboard is not valid. | {err}')
 
         return initial_data
 
@@ -153,14 +175,15 @@ class CopyPasteMixin(UtilsMixin):
             elif generate:
                 messages.success(request, 'Data generated successfully.')
             extra_context['info'] = info
-            request.session['copy_paste_info'] = str(info)
+
+        extra_context['is_https'] = 'https://' in request.build_absolute_uri()
         return super().change_view(request, object_id, form_url, extra_context)
 
     def response_post_save_add(self, request, obj):
         data = request.POST
-        initial_data = request.session.get('initial_data')
-        if initial_data:
-            initial_data = ast.literal_eval(initial_data)
+        initial_data_str = request.session.get('initial_data')
+        if initial_data_str:
+            initial_data = ast.literal_eval(initial_data_str)
             initial_data = self._creating_actual_info_from_cb_process(initial_data)
 
             for field, value in initial_data.items():
@@ -174,4 +197,3 @@ class CopyPasteMixin(UtilsMixin):
             request.session.pop('initial_data', None)
 
         return super().response_post_save_add(request, obj)
-
