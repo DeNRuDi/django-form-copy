@@ -5,16 +5,7 @@
     {{ block.super }}
     <div class="submit-row">
         {% if not add %}
-            {% if is_https or "127.0.0.1" in request.get_host or "localhost" in request.get_host %}
-                <input type="button" value="Copy" onclick='generateValues("copy")'>
-            {% else %}
-                {% if info %}
-                    <input type="button" value="Copy" onclick="copyToClipboard()">
-                {% else %}
-                    <input type="button" value="Generate" onclick='generateValues("generate")'>
-                {% endif %}
-            {% endif %}
-
+            <input type="button" id="dynamicButton" value="Generate" onclick='generateValues("generate")'>
         {% else %}
             <input type="button" value="Paste" onclick="pasteValues()">
         {% endif %}
@@ -35,11 +26,6 @@
         window.location.href = currentUrl.toString();
     }
 
-    function secureCopyToClipboard() {
-        let copyText = document.getElementById("copyTextarea");
-        navigator.clipboard.writeText(copyText.value);
-    }
-
     function copyToClipboard() {
         let copyText = document.getElementById("copyTextarea");
         copyText.style.display = 'block';
@@ -51,10 +37,25 @@
 
     document.addEventListener('DOMContentLoaded', (event) => {
         let copyText = document.getElementById("copyTextarea");
-        let copyButton = document.getElementById("copyButton");
-        if (copyText && copyText.value)
-            navigator.clipboard.writeText(copyText.value).catch(err => {})
+        if (window.location.protocol === "https:" ||
+        window.location.hostname.indexOf("127.0.0.1") !== -1 || window.location.hostname.indexOf("localhost") !== -1) {
+                let dynamicButton = document.getElementById("dynamicButton");
+                if (dynamicButton) {
+                    dynamicButton.value = "Copy";
+                    dynamicButton.onclick = function() {
+                        generateValues("copy");
+                    }
+                }
+                if (copyText && copyText.value)
+                    navigator.clipboard.writeText(copyText.value).catch(err => {})
+        } else {
+            if (copyText && copyText.value) {
+                dynamicButton.value = "Copy";
+                dynamicButton.onclick = function() {
+                    copyToClipboard("copy");
+                }
+            }
+        }
     });
-
 </script>
 {% endblock %}

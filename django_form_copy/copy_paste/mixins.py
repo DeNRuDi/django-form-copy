@@ -120,13 +120,24 @@ class CopyPasteMixin(UtilsMixin):
         initial_data = super().get_changeform_initial_data(request)
         if 'paste' in request.GET:
             try:
-                copy_paste_from_clipboard = ast.literal_eval(clipboard.paste())
+                info_from_clipboard = clipboard.paste()
+                copy_paste_from_clipboard = ast.literal_eval(info_from_clipboard)
                 new_copy_paste_from_clipboard = self._creating_actual_info_from_cb_process(copy_paste_from_clipboard)
                 initial_data.update(**new_copy_paste_from_clipboard)
-                request.session['initial_data'] = clipboard.paste()
+                request.session['initial_data'] = info_from_clipboard
                 messages.success(request, 'Data pasted successfully.')
             except Exception as err:
-                messages.error(request, f'Failed to paste - data in the clipboard is not valid. | {err}')
+                copy_paste_info = request.session.get('copy_paste_info')
+                if copy_paste_info:
+                    copy_paste_info_from_session = ast.literal_eval(copy_paste_info)
+                    new_copy_paste_from_session = self._creating_actual_info_from_cb_process(copy_paste_info_from_session)
+                    initial_data.update(**new_copy_paste_from_session)
+
+                    request.session['initial_data'] = copy_paste_info
+                    messages.success(request, 'Data pasted successfully.')
+                    request.session.pop('copy_paste_info', None)
+                else:
+                    messages.error(request, f'Failed to paste - data in the clipboard is not valid. | {err}')
 
         return initial_data
 
@@ -142,15 +153,14 @@ class CopyPasteMixin(UtilsMixin):
             elif generate:
                 messages.success(request, 'Data generated successfully.')
             extra_context['info'] = info
-
-        extra_context['is_https'] = 'https://' in request.build_absolute_uri()
+            request.session['copy_paste_info'] = str(info)
         return super().change_view(request, object_id, form_url, extra_context)
 
     def response_post_save_add(self, request, obj):
         data = request.POST
-        initial_data_str = request.session.get('initial_data')
-        if initial_data_str:
-            initial_data = ast.literal_eval(initial_data_str)
+        initial_data = request.session.get('initial_data')
+        if initial_data:
+            initial_data = ast.literal_eval(initial_data)
             initial_data = self._creating_actual_info_from_cb_process(initial_data)
 
             for field, value in initial_data.items():
