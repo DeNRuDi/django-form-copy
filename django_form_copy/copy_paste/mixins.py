@@ -1,9 +1,13 @@
 from django.db.models.fields.files import ImageFieldFile, ImageField
 from django.db.models import ForeignKey, ManyToManyField
+
+from django.core.exceptions import MultipleObjectsReturned
 from django.core.files.storage import FileSystemStorage
 from django.core.files.base import ContentFile
+
 from django.forms import model_to_dict
 from django.contrib import messages
+
 from django.conf import settings
 from django.apps import apps
 
@@ -11,6 +15,7 @@ from dateutil.parser import parse, ParserError
 from datetime import datetime, date
 
 import clipboard
+import base64
 import ast
 
 
@@ -33,10 +38,14 @@ class UtilsMixin:
     def _foreign_field_update_info_process(self, models_dict: dict, values: dict, model_info: dict, field: str) -> None:
         model = models_dict.get(values['model'])
         if model:
-            values = self._pre_format_model_dict(values, to_datetime=True)
+            values = self._pre_format_model_dict(values, to_paste=True)
             nested_values = self._get_or_create_nested_model(models_dict, values)
             nested_values = self._del_values_from_dict(nested_values, ['id', 'model'])
-            obj, _ = model.objects.get_or_create(**nested_values)
+            try:
+                obj, _ = model.objects.get_or_create(**nested_values)
+            except MultipleObjectsReturned:
+                obj = model.objects.filter(**nested_values).first()
+
             model_info.update({field: obj.id})
 
     def _many_2_many_field_update_info_process(self, models_dict: dict, values: list, model_info: dict, field: str) -> None:
@@ -44,10 +53,13 @@ class UtilsMixin:
         for m2m_item in values:
             model = models_dict.get(m2m_item['model'])
             if model:
-                m2m_item = self._pre_format_model_dict(m2m_item, to_datetime=True)
+                m2m_item = self._pre_format_model_dict(m2m_item, to_paste=True)
                 nested_m2m_item = self._get_or_create_nested_model(models_dict, m2m_item)
                 nested_m2m_item = self._del_values_from_dict(nested_m2m_item, ['id', 'model'])
-                obj, _ = model.objects.get_or_create(**nested_m2m_item)
+                try:
+                    obj, _ = model.objects.get_or_create(**nested_m2m_item)
+                except MultipleObjectsReturned:
+                    obj = model.objects.filter(**nested_m2m_item).first()
                 m2m_ids.append(obj.id)
         model_info.update({field: m2m_ids})
 
@@ -61,7 +73,7 @@ class UtilsMixin:
         image = ImageField(storage=FileSystemStorage(location=settings.BASE_DIR))
         image.attname = model_name
 
-        content_file = ContentFile(image_bytes, name=name)
+        content_file = ContentFile(base64.b64decode(image_bytes), name=name)
         image_file_field = ImageFieldFile(instance=content_file, field=image, name=name)
         model_info.update({field: image_file_field}) if image_file_field else None
 
@@ -71,9 +83,12 @@ class UtilsMixin:
             if isinstance(value, dict):
                 model = models_dict.get(value['model'])
                 if model:
-                    values = self._pre_format_model_dict(value, to_datetime=True)
+                    values = self._pre_format_model_dict(value, to_paste=True)
                     values = self._del_values_from_dict(values, ['id', 'model'])
-                    obj, _ = model.objects.get_or_create(**values)
+                    try:
+                        obj, _ = model.objects.get_or_create(**values)
+                    except MultipleObjectsReturned:
+                        obj = model.objects.filter(**values).first()
                     nested_m2m_item.update({key: obj})
 
         return nested_m2m_item
@@ -89,23 +104,26 @@ class UtilsMixin:
                         new_obj.pop(value)
         return new_obj
 
-    def _pre_format_model_dict(self, obj_dict: dict, to_datetime: bool = False) -> dict:
+    def _pre_format_model_dict(self, obj_dict: dict, to_paste: bool = False) -> dict:
         field_info = {}
         for key, value in obj_dict.items():
             if isinstance(value, datetime):
                 value = datetime.strftime(value, '%Y-%m-%d %H:%M:%S.%f %Z')
             elif isinstance(value, date):
                 value = datetime.strftime(value, '%Y-%m-%d')
-            elif isinstance(value, str) and to_datetime:
+            elif isinstance(value, str) and to_paste:
                 result = self._is_datetime(value)
                 value = result if result else value
             elif isinstance(value, ImageFieldFile):
                 if value and value.file:
                     with value.open('rb') as file:
                         file_bytes = file.read()
-                    value = (value.name, file_bytes, obj_dict['model']) if file_bytes else None
+                    value = (value.name, base64.b64encode(file_bytes).decode(), obj_dict['model']) if file_bytes else None
                 else:
                     value = None
+            elif isinstance(value, tuple):
+                name, image_bytes, model_name = value
+                value = name
             field_info.update({key: value})
 
         return field_info
